@@ -1,0 +1,21 @@
+#! /bin/sh -eu
+
+head_sha()     { git rev-parse    --short          HEAD; }
+head_branch()  { git symbolic-ref --short          HEAD; }
+head_message() { git show --no-patch --pretty='%s' HEAD; }
+head_all() {
+    git show --no-patch HEAD \
+      --date=format:"%Y-%m-%d %H:%M" \
+      --pretty="$(git name-rev --name-only HEAD) (%C(yellow)%h%Creset): %C(blue)%s%Creset"
+}
+
+look_backward () { git describe --all "$1"; }
+look_forwards () { git describe --all --contains "$1"; }
+
+case "${1:-}" in
+  "-b") head_branch ;;
+  "-m") head_message ;;
+  "-s") head_sha ;;
+  "") head_all ;;
+  \?) usage; exit 0 ;;
+esac

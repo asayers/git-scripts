@@ -1,0 +1,37 @@
+#!/bin/bash -eu
+
+
+###############################################################################
+# Config
+
+declare -r CACHE_NAME="$1"       # name of the cache
+declare -r POP_CMD="$HOME/.cache/$CACHE_NAME/populate"
+declare -r PRINT_CMD="$HOME/.cache/$CACHE_NAME/pretty-print"
+declare -r SESSION_ID="$(git rev-parse HEAD | head -c 16)"   # cache key
+
+###############################################################################
+
+# Prepare the cache
+if git diff-index --quiet HEAD; then
+    # Working tree is clean - use the real cache
+    cache="$HOME/.cache/$CACHE_NAME"
+else
+    echo "Working tree is dirty - skipping cache" >&2
+    cache=$(mktemp -d "bench.XXXXXXXXXX")
+    trap "rm -r $cache" EXIT
+fi
+mkdir -p "$cache"
+session_file="$cache/$SESSION_ID"
+
+# Run the command if necessary
+if [ -f "$session_file" ]; then
+    echo "$SESSION_ID: cache hit" >&2
+else
+    echo "$SESSION_ID: running..." >&2
+    # Use sponge to avoid creating the file unless $CMD exits successfully
+    $POP_CMD | sponge "$session_file"
+    echo "$SESSION_ID: finished" >&2
+fi
+
+# Print the results
+cat "$session_file" | $PRINT_CMD

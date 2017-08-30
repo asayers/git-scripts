@@ -1,0 +1,126 @@
+#! /bin/bash
+
+# TODO: licence
+
+# git wip [-m] [-r] [tag]
+#
+# Show WIP branches based off [tag] if specified, or WIP branches which are
+# siblings of the current branch if not.
+
+# git_base [commit]
+# Return the latest tag in the history of [commit], or HEAD if no commit is
+# specified.
+git_base() {
+    git describe --tags --abbrev=0 $1
+}
+
+usage() {
+    echo "usage: git wip [-m] [-r] [tag]"
+}
+
+
+# Static config
+MERGE_BRANCH="dev"
+
+# Dynamic config
+SHOW_MERGED=false
+SHOW_REVIEW=false
+while getopts ":mr" opt; do
+    case $opt in
+      m) SHOW_MERGED=true ;;
+      r) SHOW_REVIEW=true ;;
+      \?) usage; exit 0 ;;
+    esac
+done
+shift $((OPTIND -1))
+BASE_TAG=${1:-$(git_base)}
+
+# filter_review_branches <<< <branches>
+# Remove branches which don't contain any commits from the current user, since
+# these were probably just used to perform code review. Alternatively, if
+# $SHOW_REVIEW is "true", then this function has the opposite behaviour.
+filter_review_branches() {
+    while read branch; do
+        git_user="$(git config user.email)"
+        user_contribs="$(git log $(git_base $branch)..$branch --author $git_user)"
+        case "$SHOW_REVIEW" in
+          true)  if [   -z "$user_contribs" ]; then echo $branch; fi ;;
+          false) if [ ! -z "$user_contribs" ]; then echo $branch; fi ;;
+        esac
+    done
+}
+
+# filter_based_on <tag> <<< <branches>
+# Remove branches which are not based *directly* on the given tag. This means
+# that a branch is propagated iff the most recent tag in its history is the
+# given tag.
+filter_based_on() {
+    while read branch; do
+        if [ "$(git_base $branch)" == "$1" ]; then echo $branch; fi
+    done
+}
+
+# pp_branch <<< <branches>
+# Consume branches and pretty-print them. The format is:
+# <branch>                     <YYYY-MM-DD hh:mm> <hash> <message>
+# where the timestamp, hash, and message refer to the commit at the tip of the
+# given branch.
+pp_branch() {
+    while read branch; do
+        git show --no-patch $branch \
+          --date=format:"%Y-%m-%d %H:%M" \
+          --pretty="$branch %>|(45)%C(blue)%cd%Creset %C(yellow)%h%Creset %s"
+    done
+}
+
+get_branches() {
+    case "$SHOW_MERGED" in
+      true) # exclude old and unmerged branches [1]
+          git branch \
+          --contains "$BASE_TAG" \
+          --merged $MERGE_BRANCH ;;
+      false) # exclude old and merged branches [1]
+          git branch \
+          --contains "$BASE_TAG" \
+          --no-merged $MERGE_BRANCH ;;
+    esac
+}
+
+# git_wip
+# Show the work-in-progress branches based off $BASE_TAG
+main() {
+    get_branches |                    # remove merged/unmerged branches [1]
+        sed 's/^[ \*]*//' |           # clean up the output a little [2]
+        grep -v 'bak$' |              # remove "backup" branches
+        grep -v 'HEAD' |              # remove detatched heads [3]
+        filter_based_on $BASE_TAG |   # remove more old branches
+        filter_review_branches |      # remove review/non-review branches
+        pp_branch                     # pretty print
+}
+
+main
+
+# [1]: `--contains` is redundant with `filter_based_on`, since the latter is
+# strictly more restrctive. However, we speed things up by letting git exclude
+# most old branches.
+
+# [2]: the output of `git branch` contains an asterisk denoting the current
+# branch. We strip this out.
+
+# [3]: when HEAD is non-symbolic, git inserts a fake "detatched HEAD" entry
+# into the output of `git branch`.
+
+
+# Unused
+
+# populate_no_contains_args <commit>
+# We could omit the `filter_based_on` step if `git branch` supported a
+# `--no-contains` parameter, but unfortunately it doesn't.
+no_contains_args=()
+populate_no_contains_args() {
+    local i=0
+    while read tag; do
+        no_contains_args[$i]="--no-contains=$tag"
+        ((++i))
+    done < <(git tag --contains $1)
+}
