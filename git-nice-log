@@ -1,0 +1,25 @@
+#!/bin/sh -eu
+
+# PRETTY_FMT="%C(magenta) * [%D]%Creset%n%C(yellow)%h%Creset %C(blue)%<|(19,trunc)%cd%Creset %C(green)%<|(33,trunc)%aN%Creset %s"
+# PRETTY_FMT="%C(magenta) * [%D]%Creset%n%C(blue)%>|(11,trunc)%cd%Creset %C(green)%<|(25,trunc)%aN%Creset %C(yellow)%h%Creset %s"
+# PRETTY_FMT="%C(magenta)+-[%D]%Creset%n%C(magenta)| %C(blue)%<|(13,trunc)%cd%Creset %C(green)%<|(27,trunc)%aN%Creset %C(yellow)%h%Creset %s"
+
+# DATE_FMT="%Y-%m-%d"
+# ARGS=${@-:$(git base)..}
+
+# Example output:
+#
+#     * [base.114-awesome-branch]
+#     f6564b2 Commit message here                      Alex Sayers 29 hours ago
+
+cols=$(tput cols)
+width () { echo $((($cols>80?$cols:80) - $1)); }
+
+PRETTY_FMT="%C(magenta) *\
+ [%D]\
+ %n%C(yellow)%h\
+ %Creset%s\
+ %C(green)%>|($(width 15),trunc)%aN\
+ %C(blue)%>|($(width 1),trunc)%cr"
+
+git log --pretty="$PRETTY_FMT" $@ | sed '/\* \[\]/d' | less

@@ -1,0 +1,21 @@
+#!/bin/sh -eu
+
+cols=$(tput cols)
+width () { echo $((($cols>80?$cols:80) - $1)); }
+
+PRETTY_FMT="%(color:yellow)%(objectname:short)\
+ %(align:left,$(width 42))%(color:white)%(refname:short)%(end)\
+ %(align:39,right)%(color:green)%(authorname)\
+ %(color:blue)%(committerdate:relative)%(end)"
+
+branches () {
+    git for-each-ref --format="$PRETTY_FMT" --sort='committerdate' "$1" |
+        grep -vE 'sims/|git-series/'
+}
+
+case "${1:-}" in
+    "--mine"|"-m") branches "refs/heads" | grep --color=never "$(git config user.name)" ;;
+    "--remote"|"-r") branches "refs/remotes" ;;
+    "--tags"|"-t") branches "refs/tags" ;;
+    *) branches "refs/heads" ;;
+esac
