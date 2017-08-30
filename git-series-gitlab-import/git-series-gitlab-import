@@ -1,0 +1,111 @@
+#!/bin/bash -eu
+
+###############################################################################
+# Configuration
+
+# You may want to override the following:
+REMOTE="${REMOTE:-origin}"
+NUM_MRS="${NUM_MRS:-100}"      # The maximum number of MRs to import
+
+###############################################################################
+# Git helpers
+
+# Try to guess the url of the gitlab server. This is probably not very
+# reliable.
+guess_gitlab_url () {
+    git remote get-url "$REMOTE" | sed -e 's/^.*@//' -e 's/:.*$//'
+}
+# guess_gitlab_remote () {
+#     git remote -v | grep -i gitlab
+# }
+
+GITLAB_URL="${GITLAB_URL:-$(git config gitlab.url || guess_gitlab_url)}"
+GITLAB_PRIVATE_TOKEN="${GITLAB_PRIVATE_TOKEN:-$(git config gitlab.privateToken)}"
+GITLAB_PROJECT_ID="${GITLAB_PROJECT_ID:-$(git config gitlab.projectId)}"
+
+# object_exists <reference>
+#
+# Returns 0 if <reference> exists in the local git db, 1 otherwise.
+object_exists () { git rev-parse --verify --quiet "$1" >/dev/null; }
+
+# commit_tree_to_branch <branch> <tree> <message> <merge>
+#
+# Update <branch> to point at a new commit with the given parameters. Create
+# the branch if it doesn't exist. Do nothing if the new tree is identical to
+# the old. The revision <merge> is always specified as a parent of the created
+# commit.
+#
+# Also reads the following environment variables:
+#   GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL
+commit_tree_to_branch () {
+    local branch="$1"; local tree="$2"; local message="$3"; local merge="$4"
+    if object_exists "$branch"; then
+        parent="$(git rev-parse "$branch")"
+        current_tree="$(git rev-parse "$branch^{tree}")"
+        if [ "$current_tree" = "$tree" ]; then
+            echo "Nothing to do"
+        else
+            commit="$(git commit-tree -m "$message" -p "$parent" -p "$merge" "$tree")"
+            git branch -f "$branch" "$commit"
+            echo "Updated $branch"
+        fi
+    else
+        commit="$(git commit-tree -m "$message" -p "$merge" "$tree")"
+        git branch "$branch" "$commit"
+        echo "Created $branch"
+    fi
+}
+
+###############################################################################
+# Entry point
+
+export GIT_COMMITTER_NAME="git-series-gitlab-import"
+export GIT_COMMITTER_EMAIL=""
+
+echo "Fetching from git remote $REMOTE..."
+git fetch
+
+# Get the $NUM_MRS most recent open merge requests from gitlab
+echo "Fetching open MRs from $GITLAB_URL, project #$GITLAB_PROJECT_ID..."
+mr_data=$(mktemp)
+curl -s "$GITLAB_URL/api/v3/projects/$GITLAB_PROJECT_ID/merge_requests?private_token=$GITLAB_PRIVATE_TOKEN&per_page=$NUM_MRS&state=opened" > "$mr_data"
+
+jq '.[] | .iid' "$mr_data" | while read -r iid; do
+    this_mr=$(jq ".[] | select(.iid==$iid)" "$mr_data")
+
+    # Extract the base ("target") and series ("source") branch names
+    base_branch="$(echo "$this_mr" | jq -r "\"$REMOTE/\" + .target_branch")"
+    series_branch="$(echo "$this_mr" | jq -r "\"$REMOTE/\" + .source_branch")"
+    echo -n "!$iid ($series_branch): "
+
+    # Check that the branches still exist; skip the MR if not
+    err () { echo "ERROR: Couldn't resolve object"; continue; }
+    if ! object_exists "$base_branch"; then err; fi
+    if ! object_exists "$series_branch"; then err; fi
+
+    # Get revisions for the base and series. (Use the merge-base for base)
+    base_rev=$(git merge-base "$base_branch" "$series_branch")
+    series_rev=$(git rev-parse "$series_branch")
+
+    # The cover message follows the "<title>\n\n<body>" convention
+    cover_msg="$(echo "$this_mr" | jq -r ".title + \"\n\n\" + .description + \"\n\nTracking branch: $series_branch\"")"
+    cover_rev="$(echo "$cover_msg" | git hash-object -w --stdin)" # write to the db
+
+    # Construct a tree object for the current state of the series
+    treespec="\
+        100644 blob $cover_rev	cover
+        160000 commit $base_rev	base
+        160000 commit $series_rev	series"
+    tree_rev="$(echo "$treespec" | git mktree)"
+
+    # Info for the commit header. GIT_COMMITTER_* is defined above
+    GIT_AUTHOR_NAME="$(echo "$this_mr" | jq -r ".author.name")"
+    GIT_AUTHOR_EMAIL="$(git log -1 --author="$GIT_AUTHOR_NAME" --pretty="%aE")"
+    commit_msg="Pulled from $GITLAB_URL (!$iid)"
+    export GIT_AUTHOR_NAME; export GIT_AUTHOR_EMAIL
+    # TODO: use .updated_at as GIT_AUTHOR_TIMESTAMP
+
+    # Commit!
+    series_branch="git-series/gitlab/$iid"
+    commit_tree_to_branch "$series_branch" "$tree_rev" "$commit_msg" "$series_rev"
+done
