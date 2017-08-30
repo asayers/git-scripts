@@ -1,3 +1,13 @@
+A collection of git scripts.
+
+* [`git-absolve`](README-git-absolve.md) - show the number of lines which were
+  changed or removed since a given commit, grouped by their former blamee.
+* `git-nice-branch` - a pretty alternative to `git branch`.
+* `git-nice-log` - a pretty alternative to `git log --oneline`.
+* [`git-series-gitlab-import`](README-git-series-gitlab-import.md) - import
+  gitlab merge requests as git series.
+* `git-series-review` - review a series using vim and fugitive.
+
 ## License
 
 Licensed under either of
