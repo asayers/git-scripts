@@ -1,0 +1,34 @@
+#!/bin/bash
+
+SERIES="$1"
+REV="git-series/$SERIES"
+
+GITDIR="$(git rev-parse --git-common-dir)"
+COVERFILE="$(mktemp --suffix=.eml)"
+REVIEWFILE="$GITDIR/reviews/$SERIES.md"
+
+function cover {
+    subject="$(git cat-file -p "$REV:cover" | head -n1)"
+    cc="$(git absolve $REV:base $REV:series | sed 's/^/CC:      /')"
+    git log -1 "$REV" --pretty="\
+From:    %aN <%aE>%n\
+$cc
+Date:    %aD%n\
+Subject: $subject"
+    git cat-file -p "$REV:cover" | tail -n+2 | sed 's/^/    /'
+    echo
+    git shortlog -w80,2,4 "$REV:base..$REV:series"
+    git diff --stat=80 "$REV:base" "$REV:series"
+}
+cover | sed 's/\s*$//' > "$COVERFILE"
+
+mkdir -p "$(dirname $REVIEWFILE)"
+if ! test -f "$REVIEWFILE"; then
+    echo "# Review notes for $1" > "$REVIEWFILE"
+fi
+
+commit_urls () {
+    git rev-list "$REV:base..$REV:series" | sed "s@^@fugitive://$GITDIR//@" | tac
+}
+
+vim -p "$COVERFILE" "$REVIEWFILE" $(commit_urls)
