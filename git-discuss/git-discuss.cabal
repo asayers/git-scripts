@@ -1,0 +1,98 @@
+name:                git-discuss
+version:             0.1.0.0
+synopsis:            Discussion stored within a git repo
+description:         Please see README.md
+homepage:            https://github.com/asayers/git-discuss#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Alex Sayers
+maintainer:          alex.sayers@gmail.com
+copyright:           BSD2
+category:            None
+build-type:          Simple
+-- extra-source-files:
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:
+        Data.HashTree
+      , Git.Diffstat
+      , Git.Discuss.Backend
+      , Git.Discuss.Topic
+      , Git.Notes
+      , Git.Series
+      , Git.Shortlog
+      , Git.Util
+  build-depends:
+        attoparsec
+      , base >= 4.7 && < 5
+      , bytestring
+      , filepath
+      , gitlib
+      , hashable
+      , monad-control
+      , mtl
+      , process
+      , tagged
+      , text
+      , time
+      , transformers
+      , unordered-containers
+      , uuid
+  default-language:    Haskell2010
+
+executable git-discuss
+  hs-source-dirs:      git-discuss
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+        base
+      , git-discuss
+      , gitlib
+      , gitlib-libgit2
+      , text
+  default-language:    Haskell2010
+
+executable git-review
+  hs-source-dirs:      git-review
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  other-modules:
+        Git.Review.Routes
+      , Git.Review.Stylesheet
+      , Git.Review.Views
+  build-depends:
+        base
+      , blaze-html
+      , clay
+      , data-default-class
+      , exceptions
+      , git-discuss
+      , gitlib
+      , gitlib-libgit2
+      , highlighting-kate
+      , markdown
+      , monad-control
+      , mtl
+      , snap-core
+      , snap-server
+      , text
+      , transformers
+      , transformers-base
+      , unordered-containers
+      , uuid
+  default-language:    Haskell2010
+
+test-suite git-discuss-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       base
+                     , git-discuss
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/asayers/git-discuss
