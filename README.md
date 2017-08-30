@@ -7,6 +7,7 @@ A collection of git scripts.
 * [`git-series-gitlab-import`](README-git-series-gitlab-import.md) - import
   gitlab merge requests as git series.
 * `git-series-review` - review a series using vim and fugitive.
+* [`git-show-loose`](README-git-show-loose.md) - show loose blobs.
 
 ## License
 

@@ -1,0 +1,57 @@
+#!/bin/bash -eu
+
+show_help () { cat << EOM
+usage: git show-loose (-p | --raw)
+
+    -p  --paths   Try to give context for blobs by locating them in trees
+        --raw     Produce more machine-readable output
+EOM
+}
+
+# get_objects
+# Returns the loose objects of the current repo in the following format:
+#     <unix time> <type> <sha1> <size in bytes>
+OBJECTDIR="$(git rev-parse --show-toplevel)/.git/objects"
+get_objects () {
+    find "$OBJECTDIR" -name '*pack*' -prune -o -type f \
+        -printf '%P\t%T@\n' | # find all loose objects as "<filename> <unix time>"
+        tr -d '/' |           # transform filename -> sha1
+        git cat-file --batch-check="%(rest) %(objecttype) %(objectname) %(objectsize)"
+}
+
+# find_in_tree <sha1>
+# Looks for the given blob in all loose trees, and prints the paths at which it
+# appears.
+find_in_tree () {
+    if [ -z "${tree_cache+x}" ]; then populate_tree_cache; fi
+    grep "$1" "$tree_cache" | cut -f 2 | tr '\n' ' '
+}
+populate_tree_cache () {
+    echo "Reading loose trees... (this can take a long time)" >&2
+    tree_cache=$(tempfile)
+    get_objects | grep "tree" |
+        while read ts typ sha size; do git ls-tree -r "$sha"; done |
+        sort --unique --key 1 > $tree_cache
+}
+
+# Parse CLI flags
+case "${1:-}" in
+  ('-p'|'--paths') show_paths=1 ;;
+  ('--raw') get_objects; exit 0 ;;
+  ('-h'|'--help') show_help; exit 0 ;;
+  (*) show_paths=0 ;;
+esac
+
+# Get terminal colours
+blue=$(tput setaf 4)
+normal=$(tput setaf 7)
+yellow=$(tput setaf 3)
+
+get_objects | grep "blob" | sort --reverse --numeric --key 1 | while read ts typ sha size; do
+    printf "${blue}%(%Y-%m-%d %H:%M:%S)T\t${normal}%s ${yellow}%s ${normal}(%s bytes)" "${ts/.*/}" "$typ" "$sha" "$size"
+    if [ "$show_paths" == 1 ]; then echo -en "\t"; find_in_tree "$sha"; fi
+    echo
+done | less -SXFR
+
+# Clear tree cache
+if [ -n "${tree_cache+x}" ]; then rm $tree_cache; fi
