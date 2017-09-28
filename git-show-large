@@ -1,0 +1,12 @@
+#!/bin/bash -eu
+
+objects=$(git rev-list --objects --all)
+name_blob () { echo "$objects" | awk -v sha="$1" '$1==sha {print $2}'; }
+shorten_sha () { git rev-parse --short "$1"; }
+
+git verify-pack -v "$(git rev-parse --git-dir)"/objects/pack/*.idx |
+    grep blob |
+    sort -k3 -n -r |
+    while read -r sha _ size _ _; do
+        echo "$(shorten_sha "$sha")	$size	$(name_blob "$sha")"
+    done
