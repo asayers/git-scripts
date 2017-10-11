@@ -1,0 +1,19 @@
+#!/bin/bash -eu
+
+latest-base () {
+    git tag --list "$(git config core.versionTagPrefix)*" --sort=-version:refname |
+        head -1
+}
+
+next-base () {
+    git tag --list "$(git config core.versionTagPrefix)*" --sort=version:refname |
+        grep -A1 "$1" | tail -n+2 | tail -1
+}
+
+from=${1:-$(latest-base)}
+to=$(next-base "$from")
+echo ">>> Showing branches in $from..$to"
+
+if [ -n "$to" ]; then to="--no-contains=$to"; fi
+git for-each-ref refs/heads/ "--contains=$from" "$to" --format "%(refname:short)" |
+    grep -Ev "git-series|sims|dev";

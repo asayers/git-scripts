@@ -9,6 +9,7 @@ A collection of git scripts.
 * `git-series-review` - review a series using vim and fugitive.
 * `git-show-large` - show large blobs.
 * [`git-show-loose`](README-git-show-loose.md) - show loose blobs.
+* `git-wip` - show branches between two consecutive tags.
 
 ## License
 
