@@ -42,17 +42,15 @@ commit_tree_to_branch () {
     if object_exists "$branch"; then
         parent="$(git rev-parse "$branch")"
         current_tree="$(git rev-parse "$branch^{tree}")"
-        if [ "$current_tree" = "$tree" ]; then
-            echo "Nothing to do"
-        else
+        if [ "$current_tree" != "$tree" ]; then
             commit="$(git commit-tree -m "$message" -p "$parent" -p "$merge" "$tree")"
             git branch -f "$branch" "$commit"
-            echo "Updated $branch"
+            echo "Updated $branch ($message)"
         fi
     else
         commit="$(git commit-tree -m "$message" -p "$merge" "$tree")"
         git branch "$branch" "$commit"
-        echo "Created $branch"
+        echo "Created $branch ($message)"
     fi
 }
 
@@ -76,12 +74,11 @@ jq '.[] | .iid' "$mr_data" | while read -r iid; do
     # Extract the base ("target") and series ("source") branch names
     base_branch="$(echo "$this_mr" | jq -r "\"$REMOTE/\" + .target_branch")"
     series_branch="$(echo "$this_mr" | jq -r "\"$REMOTE/\" + .source_branch")"
-    echo -n "!$iid ($series_branch): "
 
     # Check that the branches still exist; skip the MR if not
-    err () { echo "ERROR: Couldn't resolve object"; continue; }
-    if ! object_exists "$base_branch"; then err; fi
-    if ! object_exists "$series_branch"; then err; fi
+    err () { echo "WARN: Couldn't resolve object $1"; continue; }
+    if ! object_exists "$base_branch"; then err "$base_branch"; fi
+    if ! object_exists "$series_branch"; then err "$series_branch"; fi
 
     # Get revisions for the base and series. (Use the merge-base for base)
     base_rev=$(git merge-base "$base_branch" "$series_branch")
