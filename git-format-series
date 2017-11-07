@@ -1,0 +1,75 @@
+#!/bin/bash -eu
+
+REV="${1:-SHEAD}"
+
+# Parse the output of `git diff` into a format readable by `git blame`. Take
+# only the ranges on the "removed" side of the diff. Ignore ranges of length 0.
+# Eg., the diff
+#     --- a/Foo/Bar.hs
+#     +++ b/Foo/Qux.hs
+#     @@ -16,2 +17,3 @@
+#     ...
+#     @@ -23 +24,0 @@
+#     ...
+# becomes
+#     Foo/Bar.hs	-L 16,+2 -L 23,+1
+diff_ranges='
+BEGIN { file = "UNKNOWN"; flags = "" }
+match($0, /^--- a\/(.*)/, m) {
+  if(flags != "") { printf("%s\t%s\n", file, flags) };
+  file = m[1];
+  flags = "";
+}
+match($0, /^@@ -([0-9,]+) \+([0-9,]+) @@/, m) {
+  split(m[1], range, ",");
+  if(range[2] == "") { range[2] = "1" };
+  if(range[2] != "0") {
+    flags = sprintf("%s -L %s,+%s", flags, range[1], range[2])
+  };
+}
+END {
+  if(flags != "") { printf("%s\t%s\n", file, flags) };
+}'
+
+function absolve {
+    BASE="$1"       # The revision we're diffing from
+    HEAD="$2"   # The revision we're diffing to
+
+    # Is it more reliable to use 'git blame --show-email'?
+    git diff --unified=0 "$BASE" "$HEAD" |   # diff branch against base
+        gawk "$diff_ranges" |                # convert diff to ranges
+        while read -r file ranges; do           # run git-blame on ranges
+            git blame --date=short $ranges "$BASE" -- "$file"; done |
+        sed -r -e 's/[^\(]*\(([^\)]*)\).*/\1/' \
+               -e 's/(.*[^ ])\s+([^ ]+)\s+[0-9]+/  \2   \1/' | # extract author and date
+        sort -k2d -k1dr,1 |     # sort on author then date
+        uniq -f1 -c |           # uniq on author, counting
+        sort -k1nr,1 |          # sort on count
+        while read -r linenum _ author; do     # format nicely
+            git log -1 "$BASE" --author="$author" --color=always \
+                --format="%aN <%aE>	| $linenum	%C(red)$(printf '–%.0s' $(seq 1 "$linenum"))%Creset"
+        done |                     # we're using an en-dash here ^ because printf interprets minus signs
+        column -t -s'	'
+}
+
+function cover {
+    subject="$(git cat-file -p "$REV:cover" | head -n1)"
+    author="$(git log -1 "$REV" --pretty="%aN")"
+    git log -1 "$REV" --color=always --pretty="\
+%C(yellow)series %H%Creset
+From: %aN <%aE>%n\
+Date: %aD%n\
+Subject: $subject"
+    git cat-file -p "$REV:cover" | tail -n+2 | fold -w76 -s | sed 's/^/    /'
+    echo
+    git shortlog -w80,2,4 "$REV:base..$REV:series"
+    git diff --color=always --stat=80 "$REV:base" "$REV:series"
+    echo
+    absolve "$REV:base" "$REV:series" | grep -v "$author" && echo || true
+    git ls-tree "$REV:notes" | while read -r _ _ sha _; do
+        echo "---"
+        git cat-file -p "$sha" | fold -s
+        echo
+    done
+}
+cover | sed 's/\s*$//'
