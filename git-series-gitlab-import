@@ -45,12 +45,12 @@ commit_tree_to_branch () {
         if [ "$current_tree" != "$tree" ]; then
             commit="$(git commit-tree -m "$message" -p "$parent" -p "$merge" "$tree")"
             git branch -f "$branch" "$commit"
-            echo "Updated $branch ($message)"
+            echo "Updated $branch"
         fi
     else
         commit="$(git commit-tree -m "$message" -p "$merge" "$tree")"
         git branch "$branch" "$commit"
-        echo "Created $branch ($message)"
+        echo "Created $branch"
     fi
 }
 
@@ -64,28 +64,35 @@ echo "Fetching from git remote $REMOTE..."
 git fetch
 
 # Get the $NUM_MRS most recent open merge requests from gitlab
-echo "Fetching open MRs from $GITLAB_URL, project #$GITLAB_PROJECT_ID..."
 mr_data=$(mktemp)
+echo "Fetching open MRs from $GITLAB_URL, project #$GITLAB_PROJECT_ID, saving to $mr_data"
 curl -s "$GITLAB_URL/api/v3/projects/$GITLAB_PROJECT_ID/merge_requests?private_token=$GITLAB_PRIVATE_TOKEN&per_page=$NUM_MRS&state=opened" > "$mr_data"
 
 jq '.[] | .iid' "$mr_data" | while read -r iid; do
     this_mr=$(jq ".[] | select(.iid==$iid)" "$mr_data")
 
-    # Extract the base ("target") and series ("source") branch names
-    base_branch="$(echo "$this_mr" | jq -r "\"$REMOTE/\" + .target_branch")"
-    series_branch="$(echo "$this_mr" | jq -r "\"$REMOTE/\" + .source_branch")"
+    # Extract the target and source branch names
+    target_branch="$(echo "$this_mr" | jq -r "\"$REMOTE/\" + .target_branch")"
+    source_branch="$(echo "$this_mr" | jq -r "\"$REMOTE/\" + .source_branch")"
 
     # Check that the branches still exist; skip the MR if not
     err () { echo "WARN: Couldn't resolve object $1"; continue; }
-    if ! object_exists "$base_branch"; then err "$base_branch"; fi
-    if ! object_exists "$series_branch"; then err "$series_branch"; fi
+    if ! object_exists "$target_branch"; then err "$target_branch"; fi
+    if ! object_exists "$source_branch"; then err "$source_branch"; fi
 
     # Get revisions for the base and series. (Use the merge-base for base)
-    base_rev=$(git merge-base "$base_branch" "$series_branch")
-    series_rev=$(git rev-parse "$series_branch")
+    base_rev=$(git merge-base "$target_branch" "$source_branch")
+    series_rev=$(git rev-parse "$source_branch")
 
     # The cover message follows the "<title>\n\n<body>" convention
-    cover_msg="$(echo "$this_mr" | jq -r ".title + \"\n\n\" + .description + \"\n\nTracking branch: $series_branch\"")"
+    cover_title="$(echo "$this_mr" | jq -r ".title")"
+    cover_desc="$(echo "$this_mr" | jq -r ".description")"
+    cover_msg="\
+$cover_title
+
+$cover_desc
+
+Closes !$iid"
     cover_rev="$(echo "$cover_msg" | git hash-object -w --stdin)" # write to the db
 
     # Construct a tree object for the current state of the series
@@ -98,7 +105,7 @@ jq '.[] | .iid' "$mr_data" | while read -r iid; do
     # Info for the commit header. GIT_COMMITTER_* is defined above
     GIT_AUTHOR_NAME="$(echo "$this_mr" | jq -r ".author.name")"
     GIT_AUTHOR_EMAIL="$(git log -1 --author="$GIT_AUTHOR_NAME" --pretty="%aE")"
-    commit_msg="Pulled from $GITLAB_URL (!$iid)"
+    commit_msg="Import latest version of !$iid from $GITLAB_URL"
     export GIT_AUTHOR_NAME; export GIT_AUTHOR_EMAIL
     # TODO: use .updated_at as GIT_AUTHOR_TIMESTAMP
 
