@@ -4,12 +4,13 @@ A collection of git scripts.
   changed or removed since a given commit, grouped by their former blamee.
 * `git-nice-branch` - a pretty alternative to `git branch`.
 * `git-nice-log` - a pretty alternative to `git log --oneline`.
-* [`git-series-gitlab-import`](README-git-series-gitlab-import.md) - import
-  gitlab merge requests as git series.
+* ~~`git-series-gitlab-import`~~ - GONE (use [gitlab-sync] instead).
 * `git-series-review` - review a series using vim and fugitive.
 * `git-show-large` - show large blobs.
 * [`git-show-loose`](README-git-show-loose.md) - show loose blobs.
 * `git-wip` - show branches between two consecutive tags.
+
+[gitlab-sync]: https://github.com/asayers/gitlab-sync
 
 ## License
 
