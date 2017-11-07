@@ -1,34 +1,23 @@
 #!/bin/bash
 
-SERIES="$1"
-REV="git-series/$SERIES"
+REV="$1"
 
 GITDIR="$(git rev-parse --git-common-dir)"
+
 COVERFILE="$(mktemp --suffix=.eml)"
-REVIEWFILE="$GITDIR/reviews/$SERIES.md"
+git format-series "$REV" | sed 's/\s*$//' > "$COVERFILE"
 
-function cover {
-    subject="$(git cat-file -p "$REV:cover" | head -n1)"
-    cc="$(git absolve $REV:base $REV:series | sed 's/^/CC:      /')"
-    git log -1 "$REV" --pretty="\
-From:    %aN <%aE>%n\
-$cc
-Date:    %aD%n\
-Subject: $subject"
-    git cat-file -p "$REV:cover" | tail -n+2 | sed 's/^/    /'
-    echo
-    git shortlog -w80,2,4 "$REV:base..$REV:series"
-    git diff --stat=80 "$REV:base" "$REV:series"
-}
-cover | sed 's/\s*$//' > "$COVERFILE"
-
-mkdir -p "$(dirname $REVIEWFILE)"
+REVIEWFILE="$GITDIR/reviews/$REV.md"
+mkdir -p "$(dirname "$REVIEWFILE")"
 if ! test -f "$REVIEWFILE"; then
-    echo "# Review notes for $1" > "$REVIEWFILE"
+    echo "# Review notes for $REV" > "$REVIEWFILE"
 fi
 
 commit_urls () {
     git rev-list "$REV:base..$REV:series" | sed "s@^@fugitive://$GITDIR//@" | tac
 }
 
-vim -p "$COVERFILE" "$REVIEWFILE" $(commit_urls)
+QFLISTFILE="$(mktemp)"
+{ echo "$COVERFILE"; echo "$REVIEWFILE"; commit_urls; } >> "$QFLISTFILE"
+
+vim -c"set errorformat=%f" -c"cfile $QFLISTFILE" -c"copen"
